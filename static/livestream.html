@@ -83,97 +83,120 @@
                 <div class="ls-panel-header">
                     <h2>➕ Create New Stream</h2>
                 </div>
-                <div class="ls-create-form">
-                    <div class="ls-form-card">
-                        <h3>📺 Broadcast Details</h3>
-                        <div class="ls-form-group">
-                            <label>Title</label>
-                            <input id="create-title" type="text" placeholder="e.g. Gaming Stream, Music Live, 24/7 Radio">
+                <div class="ls-create-layout">
+                    <!-- Left Column: Stream Settings -->
+                    <div class="ls-create-left">
+                        <div class="ls-form-card">
+                            <h3>📺 Broadcast Details</h3>
+                            <div class="ls-form-group">
+                                <label>Title</label>
+                                <input id="create-title" type="text" placeholder="e.g. Gaming Stream, Music Live, 24/7 Radio">
+                            </div>
+                            <div class="ls-form-group">
+                                <label>Description</label>
+                                <textarea id="create-desc" rows="2" placeholder="Stream description (optional)"></textarea>
+                            </div>
+                            <div class="ls-form-row">
+                                <div class="ls-form-group">
+                                    <label>Privacy</label>
+                                    <select id="create-privacy">
+                                        <option value="unlisted">🔗 Unlisted</option>
+                                        <option value="public">🌍 Public</option>
+                                        <option value="private">🔒 Private</option>
+                                    </select>
+                                </div>
+                                <div class="ls-form-group">
+                                    <label>Resolution</label>
+                                    <select id="create-resolution">
+                                        <option value="1080p">1080p (Full HD)</option>
+                                        <option value="720p">720p (HD)</option>
+                                        <option value="480p">480p</option>
+                                        <option value="1440p">1440p (2K)</option>
+                                        <option value="2160p">2160p (4K)</option>
+                                    </select>
+                                </div>
+                                <div class="ls-form-group">
+                                    <label>Frame Rate</label>
+                                    <select id="create-fps">
+                                        <option value="30fps">30 fps</option>
+                                        <option value="60fps">60 fps</option>
+                                    </select>
+                                </div>
+                            </div>
                         </div>
-                        <div class="ls-form-group">
-                            <label>Description</label>
-                            <textarea id="create-desc" rows="2" placeholder="Stream description (optional)"></textarea>
+
+                        <div class="ls-form-card">
+                            <h3>⚡ FFmpeg Source</h3>
+                            <div class="ls-form-group">
+                                <label>Preset</label>
+                                <select id="create-preset" onchange="onPresetChange()">
+                                    <option value="file">📁 File → RTMP</option>
+                                    <option value="file_loop">🔁 Loop File → RTMP (24/7)</option>
+                                    <option value="camera_win">📷 Camera (Windows)</option>
+                                    <option value="screen_win_dd">🖥️ Screen Capture DXGI ✅ (Windows — Recommended)</option>
+                                    <option value="screen_win">🖥️ Screen Capture GDI (Windows — may black screen)</option>
+                                    <option value="screen_linux">🖥️ Screen Capture (Linux)</option>
+                                    <option value="custom">⚙️ Custom Command</option>
+                                    <option value="advanced_scene">✨ Advanced Scene (Layers)</option>
+                                </select>
+                            </div>
+                            <div class="ls-form-group" id="input-source-group">
+                                <label>Input Source</label>
+                                <input id="create-input" type="text" placeholder="e.g. C:\videos\stream.mp4 or /home/user/video.mp4">
+                            </div>
+                            <div class="ls-form-row" id="ffmpeg-options-row">
+                                <div class="ls-form-group">
+                                    <label>Video Bitrate</label>
+                                    <select id="create-bitrate">
+                                        <option value="2000k">2000k (Low)</option>
+                                        <option value="3000k">3000k (Medium)</option>
+                                        <option value="4500k" selected>4500k (High)</option>
+                                        <option value="6000k">6000k (Very High)</option>
+                                        <option value="8000k">8000k (Ultra)</option>
+                                    </select>
+                                </div>
+                                <div class="ls-form-group">
+                                    <label>Buffer Size</label>
+                                    <select id="create-bufsize">
+                                        <option value="4000k">4000k</option>
+                                        <option value="6000k">6000k</option>
+                                        <option value="9000k" selected>9000k</option>
+                                        <option value="12000k">12000k</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="ls-form-group" id="custom-cmd-group" style="display:none">
+                                <label>Custom FFmpeg Command</label>
+                                <textarea id="create-custom-cmd" rows="3" placeholder='ffmpeg -re -i "input.mp4" ... -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"' style="font-family:'JetBrains Mono',monospace;font-size:0.85rem"></textarea>
+                            </div>
                         </div>
-                        <div class="ls-form-row">
-                            <div class="ls-form-group">
-                                <label>Privacy</label>
-                                <select id="create-privacy">
-                                    <option value="unlisted">🔗 Unlisted</option>
-                                    <option value="public">🌍 Public</option>
-                                    <option value="private">🔒 Private</option>
-                                </select>
-                            </div>
-                            <div class="ls-form-group">
-                                <label>Resolution</label>
-                                <select id="create-resolution">
-                                    <option value="1080p">1080p (Full HD)</option>
-                                    <option value="720p">720p (HD)</option>
-                                    <option value="480p">480p</option>
-                                    <option value="1440p">1440p (2K)</option>
-                                    <option value="2160p">2160p (4K)</option>
-                                </select>
-                            </div>
-                            <div class="ls-form-group">
-                                <label>Frame Rate</label>
-                                <select id="create-fps">
-                                    <option value="30fps">30 fps</option>
-                                    <option value="60fps">60 fps</option>
-                                </select>
-                            </div>
+
+                        <div class="ls-form-actions">
+                            <button class="ls-btn ls-btn-primary ls-btn-lg" onclick="createAndGoLive()" id="btn-go-live">
+                                🚀 Create &amp; Go Live
+                            </button>
+                            <button class="ls-btn ls-btn-outline" onclick="createOnly()">
+                                📋 Create Only (Get Key)
+                            </button>
                         </div>
                     </div>
 
-                    <div class="ls-form-card">
-                        <h3>⚡ FFmpeg Source</h3>
-                        <div class="ls-form-group">
-                            <label>Preset</label>
-                            <select id="create-preset" onchange="onPresetChange()">
-                                <option value="file">📁 File → RTMP</option>
-                                <option value="file_loop">🔁 Loop File → RTMP (24/7)</option>
-                                <option value="camera_win">📷 Camera (Windows)</option>
-                                <option value="screen_win">🖥️ Screen Capture (Windows)</option>
-                                <option value="screen_linux">🖥️ Screen Capture (Linux)</option>
-                                <option value="custom">⚙️ Custom Command</option>
-                            </select>
-                        </div>
-                        <div class="ls-form-group" id="input-source-group">
-                            <label>Input Source</label>
-                            <input id="create-input" type="text" placeholder="e.g. C:\videos\stream.mp4 or /home/user/video.mp4">
-                        </div>
-                        <div class="ls-form-row" id="ffmpeg-options-row">
-                            <div class="ls-form-group">
-                                <label>Video Bitrate</label>
-                                <select id="create-bitrate">
-                                    <option value="2000k">2000k (Low)</option>
-                                    <option value="3000k">3000k (Medium)</option>
-                                    <option value="4500k" selected>4500k (High)</option>
-                                    <option value="6000k">6000k (Very High)</option>
-                                    <option value="8000k">8000k (Ultra)</option>
-                                </select>
+                    <!-- Right Column: Advanced Scene Compositor -->
+                    <div id="advanced-scene-group" class="ls-create-right" style="display:none;">
+                        <div class="ls-form-card" style="position:sticky;top:0;">
+                            <h3>✨ Advanced Scene Compositor</h3>
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                                <div style="display:flex;gap:10px;align-items:center;">
+                                    <span style="font-size:0.82rem;color:var(--text2);font-weight:600;">Canvas</span>
+                                    <input id="canvas-w" type="number" value="1920" class="ls-canvas-dim" oninput="renderVisualCanvas()">
+                                    <span style="color:var(--text-muted);">×</span>
+                                    <input id="canvas-h" type="number" value="1080" class="ls-canvas-dim" oninput="renderVisualCanvas()">
+                                </div>
+                                <button class="ls-btn ls-btn-sm ls-btn-primary" onclick="addAdvancedLayer()">+ Add Layer</button>
                             </div>
-                            <div class="ls-form-group">
-                                <label>Buffer Size</label>
-                                <select id="create-bufsize">
-                                    <option value="4000k">4000k</option>
-                                    <option value="6000k">6000k</option>
-                                    <option value="9000k" selected>9000k</option>
-                                    <option value="12000k">12000k</option>
-                                </select>
-                            </div>
+                            <div id="ls-visual-canvas"></div>
+                            <div id="layers-container" style="display:flex;flex-direction:column;gap:10px;margin-top:12px;"></div>
                         </div>
-                        <div class="ls-form-group" id="custom-cmd-group" style="display:none">
-                            <label>Custom FFmpeg Command</label>
-                            <textarea id="create-custom-cmd" rows="3" placeholder='ffmpeg -re -i "input.mp4" ... -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"' style="font-family:'JetBrains Mono',monospace;font-size:0.85rem"></textarea>
-                        </div>
-                    </div>
-
-                    <div class="ls-form-actions">
-                        <button class="ls-btn ls-btn-primary ls-btn-lg" onclick="createAndGoLive()" id="btn-go-live">
-                            🚀 Create & Go Live
-                        </button>
-                        <button class="ls-btn ls-btn-outline" onclick="createOnly()">
-                            📋 Create Only (Get Key)
-                        </button>
                     </div>
                 </div>
             </div>
@@ -332,7 +355,8 @@
                 <option value="file">📁 File</option>
                 <option value="file_loop">🔁 Loop File</option>
                 <option value="camera_win">📷 Camera</option>
-                <option value="screen_win">🖥️ Screen</option>
+                <option value="screen_win_dd">🖥️ Screen DXGI ✅</option>
+                <option value="screen_win">🖥️ Screen GDI</option>
             </select>
         </div>
         <div class="ls-form-group">

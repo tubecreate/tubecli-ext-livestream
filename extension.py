@@ -50,10 +50,16 @@ FFMPEG_PRESETS = {
         "defaults": {"bitrate": "4500k", "bufsize": "9000k", "gop": "60", "camera": "Integrated Camera", "mic": "Microphone"},
     },
     "screen_win": {
-        "label": "🖥️ Screen → RTMP (Windows)",
-        "description": "Stream desktop screen capture",
-        "template": '-f gdigrab -framerate {fps} -i desktop -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v libx264 -preset ultrafast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -shortest -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
-        "defaults": {"bitrate": "3000k", "bufsize": "6000k", "gop": "60", "fps": "30"},
+        "label": "🖥️ Screen → RTMP (Windows GDI)",
+        "description": "Stream desktop screen capture (GDI — may show black for GPU apps)",
+        "template": '-f gdigrab -draw_mouse {draw_mouse} -framerate {fps} -i desktop -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v libx264 -preset ultrafast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -shortest -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
+        "defaults": {"bitrate": "3000k", "bufsize": "6000k", "gop": "60", "fps": "30", "draw_mouse": "1"},
+    },
+    "screen_win_dd": {
+        "label": "🖥️ Screen → RTMP (Windows DXGI ✅)",
+        "description": "Stream desktop via DirectX Desktop Duplication — fixes black screen for GPU-accelerated apps (Chrome, OBS, games, etc.)",
+        "template": '-init_hw_device d3d11va=d3d11 -filter_complex "ddagrab=output_idx={monitor}:draw_mouse={draw_mouse}:framerate={fps},hwdownload,format=bgra,format=yuv420p[v];anullsrc=channel_layout=stereo:sample_rate=44100[a]" -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -g {gop} -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
+        "defaults": {"bitrate": "3000k", "bufsize": "6000k", "gop": "60", "fps": "30", "monitor": "0", "draw_mouse": "1"},
     },
     "screen_linux": {
         "label": "🖥️ Screen → RTMP (Linux)",

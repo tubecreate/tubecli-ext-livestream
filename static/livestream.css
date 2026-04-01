@@ -77,10 +77,15 @@
 .ls-btn-sm { padding: 4px 10px; font-size: 0.78rem; }
 .ls-btn-lg { padding: 14px 28px; font-size: 1rem; }
 
-/* ─── Create form ─── */
-.ls-create-form { display: flex; flex-direction: column; gap: 20px; max-width: 700px; }
+/* ─── Create form — Two-column layout ─── */
+.ls-create-layout { display: flex; gap: 24px; align-items: flex-start; }
+.ls-create-left { flex: 0 0 420px; display: flex; flex-direction: column; gap: 16px; }
+.ls-create-right { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
 .ls-form-card { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius, 12px); padding: 24px; }
 .ls-form-card h3 { margin: 0 0 16px; font-size: 1rem; font-weight: 700; color: var(--cyan); }
+.ls-canvas-dim { width: 72px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 0.82rem; text-align: center; font-family: 'JetBrains Mono', monospace; outline: none; }
+.ls-canvas-dim:focus { border-color: var(--cyan); }
+#ls-visual-canvas { background: #0a0e14; border: 1px solid var(--border); border-radius: 8px; position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; background-image: linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px); background-size: 10% 10%; }
 
 .ls-form-group { margin-bottom: 14px; }
 .ls-form-group:last-child { margin-bottom: 0; }
@@ -101,6 +106,20 @@
 .ls-copy-field input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 0.85rem; }
 .ls-copy-field button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg3); color: var(--text); cursor: pointer; transition: all 0.2s; }
 .ls-copy-field button:hover { border-color: var(--cyan); color: var(--cyan); }
+
+/* ─── Advanced Scene Layer Builder & Canvas ─── */
+.ls-layer-row { padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: rgba(0,0,0,0.2); }
+.ls-layer-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.ls-layer-grid { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ls-layer-input { padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-family: inherit; font-size: 0.8rem; outline: none; transition: border-color 0.2s; }
+.ls-layer-input:focus { border-color: var(--cyan); }
+.ls-num-input { width: 60px; text-align: center; }
+
+/* Visual Canvas Elements */
+.ls-visual-box { position: absolute; border: 2px solid var(--cyan); background: rgba(0, 204, 255, 0.12); display: flex; align-items: center; justify-content: center; user-select: none; cursor: move; box-sizing: border-box; overflow: hidden; text-align: center; z-index: 10; font-size: 0.75rem; font-weight: 600; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,0.9); border-radius: 3px; }
+.ls-visual-box:hover { box-shadow: 0 0 12px rgba(0, 204, 255, 0.35); }
+.ls-visual-box.active { border-color: #ff3366; background: rgba(255, 51, 102, 0.12); z-index: 11; box-shadow: 0 0 16px rgba(255, 51, 102, 0.4); }
+.ls-visual-handle { position: absolute; right: 0; bottom: 0; width: 12px; height: 12px; background: #fff; cursor: nwse-resize; z-index: 12; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
 
 /* ─── Broadcast List ─── */
 .ls-broadcast-list { display: flex; flex-direction: column; gap: 8px; }

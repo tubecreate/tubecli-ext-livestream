@@ -5,6 +5,8 @@
 const API = '/api/v1/livestream';
 let _currentCredId = '';
 let _currentLogSession = '';
+let _advancedLayers = [];
+let _activeWindows = [];
 
 // ═══ API Helpers ═══
 async function apiGet(path) {
@@ -232,19 +234,207 @@ function onPresetChange() {
     const inputGroup = document.getElementById('input-source-group');
     const optionsRow = document.getElementById('ffmpeg-options-row');
     const customGroup = document.getElementById('custom-cmd-group');
+    const advancedGroup = document.getElementById('advanced-scene-group');
+
+    inputGroup.style.display = 'none';
+    optionsRow.style.display = 'none';
+    customGroup.style.display = 'none';
+    if(advancedGroup) advancedGroup.style.display = 'none';
 
     if (preset === 'custom') {
-        inputGroup.style.display = 'none';
-        optionsRow.style.display = 'none';
         customGroup.style.display = 'block';
-    } else if (preset === 'camera_win' || preset === 'screen_win' || preset === 'screen_linux') {
-        inputGroup.style.display = 'none';
+    } else if (preset === 'advanced_scene') {
         optionsRow.style.display = 'flex';
-        customGroup.style.display = 'none';
+        if(advancedGroup) advancedGroup.style.display = 'block';
+        fetchActiveWindows();
+        if (_advancedLayers.length === 0) addAdvancedLayer();
+    } else if (preset === 'camera_win' || preset === 'screen_win' || preset === 'screen_win_dd' || preset === 'screen_linux') {
+        optionsRow.style.display = 'flex';
     } else {
         inputGroup.style.display = 'block';
         optionsRow.style.display = 'flex';
-        customGroup.style.display = 'none';
+    }
+}
+
+// ─── Advanced Scene Logic ───
+async function fetchActiveWindows() {
+    if (_activeWindows.length > 0) return; // cache
+    const data = await apiGet('/windows');
+    if (data?.status === 'success') {
+        _activeWindows = data.windows || [];
+        renderAdvancedLayers(); // re-render to update select options
+    }
+}
+
+function addAdvancedLayer() {
+    _advancedLayers.push({
+        type: 'window',
+        source: '',
+        x: 0,
+        y: 0,
+        w: 1920,
+        h: 1080
+    });
+    renderAdvancedLayers();
+}
+
+function removeAdvancedLayer(index) {
+    _advancedLayers.splice(index, 1);
+    renderAdvancedLayers();
+}
+
+function updateAdvancedLayer(index, field, value) {
+    if (_advancedLayers[index]) {
+        _advancedLayers[index][field] = field === 'x' || field === 'y' || field === 'w' || field === 'h' ? Number(value) : value;
+        renderVisualCanvas();
+    }
+}
+
+function renderAdvancedLayers() {
+    renderVisualCanvas();
+    const container = document.getElementById('layers-container');
+    if (!container) return;
+    
+    container.innerHTML = _advancedLayers.map((layer, i) => {
+        const isWindow = layer.type === 'window';
+        
+        let sourceInput = '';
+        if (isWindow) {
+            const options = _activeWindows.map(w => `<option value="${esc(w)}" ${w === layer.source ? 'selected' : ''}>${esc(w)}</option>`).join('');
+            sourceInput = `
+                <select class="ls-layer-input" style="flex:2;min-width:180px;" onchange="updateAdvancedLayer(${i}, 'source', this.value)">
+                    <option value="">-- Select Window --</option>
+                    ${options}
+                </select>
+            `;
+        } else {
+            sourceInput = `<input type="text" class="ls-layer-input" style="flex:2;min-width:180px;" placeholder="Path to .mp4 or image" value="${esc(layer.source)}" oninput="updateAdvancedLayer(${i}, 'source', this.value)">`;
+        }
+
+        return `
+        <div class="ls-layer-row">
+            <div class="ls-layer-header">
+                <span class="ls-tag">Layer ${i+1}</span>
+                <button class="ls-btn ls-btn-sm ls-btn-danger" onclick="removeAdvancedLayer(${i})">✕</button>
+            </div>
+            <div class="ls-layer-grid">
+                <select class="ls-layer-input" onchange="updateAdvancedLayer(${i}, 'type', this.value); renderAdvancedLayers()">
+                    <option value="window" ${layer.type === 'window' ? 'selected' : ''}>🖥️ Window</option>
+                    <option value="file" ${layer.type === 'file' ? 'selected' : ''}>📁 File</option>
+                </select>
+                ${sourceInput}
+                <div style="display:flex;gap:4px;align-items:center;">
+                    X: <input type="number" id="layer-${i}-x" class="ls-layer-input ls-num-input" value="${layer.x}" oninput="updateAdvancedLayer(${i}, 'x', this.value)">
+                    Y: <input type="number" id="layer-${i}-y" class="ls-layer-input ls-num-input" value="${layer.y}" oninput="updateAdvancedLayer(${i}, 'y', this.value)">
+                </div>
+                <div style="display:flex;gap:4px;align-items:center;">
+                    W: <input type="number" id="layer-${i}-w" class="ls-layer-input ls-num-input" value="${layer.w}" oninput="updateAdvancedLayer(${i}, 'w', this.value)">
+                    H: <input type="number" id="layer-${i}-h" class="ls-layer-input ls-num-input" value="${layer.h}" oninput="updateAdvancedLayer(${i}, 'h', this.value)">
+                </div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// ─── Visual Canvas ───
+let _activeBoxId = -1;
+
+function renderVisualCanvas() {
+    const canvas = document.getElementById('ls-visual-canvas');
+    if (!canvas) return;
+    
+    const cw = Number(document.getElementById('canvas-w')?.value) || 1920;
+    const ch = Number(document.getElementById('canvas-h')?.value) || 1080;
+    
+    canvas.style.aspectRatio = `${cw}/${ch}`;
+    canvas.innerHTML = '';
+    
+    _advancedLayers.forEach((layer, i) => {
+        const box = document.createElement('div');
+        box.className = 'ls-visual-box' + (_activeBoxId === i ? ' active' : '');
+        box.dataset.index = i;
+        
+        box.style.left = `${(layer.x / cw) * 100}%`;
+        box.style.top = `${(layer.y / ch) * 100}%`;
+        box.style.width = `${(layer.w / cw) * 100}%`;
+        box.style.height = `${(layer.h / ch) * 100}%`;
+        
+        const label = layer.type === 'window'
+            ? (layer.source ? layer.source.substring(0, 25) : `Layer ${i+1}: Window`)
+            : `Layer ${i+1}: File`;
+        box.innerText = label;
+        
+        const handle = document.createElement('div');
+        handle.className = 'ls-visual-handle';
+        box.appendChild(handle);
+        
+        canvas.appendChild(box);
+        
+        _attachDrag(box, handle, i, cw, ch, canvas);
+    });
+}
+
+function _attachDrag(box, handle, idx, cw, ch, canvas) {
+    let mode = null; // 'drag' | 'resize'
+    let sx, sy, ox, oy, ow, oh;
+
+    function onDown(e, m) {
+        e.preventDefault();
+        e.stopPropagation();
+        mode = m;
+        sx = e.clientX;
+        sy = e.clientY;
+        const layer = _advancedLayers[idx];
+        ox = layer.x; oy = layer.y; ow = layer.w; oh = layer.h;
+        
+        // Mark active visually without DOM rebuild
+        _activeBoxId = idx;
+        canvas.querySelectorAll('.ls-visual-box').forEach(b => b.classList.remove('active'));
+        box.classList.add('active');
+        
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    }
+
+    box.addEventListener('mousedown', (e) => {
+        if (e.target === handle) return;
+        onDown(e, 'drag');
+    });
+    handle.addEventListener('mousedown', (e) => onDown(e, 'resize'));
+
+    function onMove(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = cw / rect.width;
+        const scaleY = ch / rect.height;
+        const dx = (e.clientX - sx) * scaleX;
+        const dy = (e.clientY - sy) * scaleY;
+        const layer = _advancedLayers[idx];
+
+        if (mode === 'drag') {
+            layer.x = Math.round(ox + dx);
+            layer.y = Math.round(oy + dy);
+            box.style.left = `${(layer.x / cw) * 100}%`;
+            box.style.top  = `${(layer.y / ch) * 100}%`;
+            const ix = document.getElementById(`layer-${idx}-x`);
+            const iy = document.getElementById(`layer-${idx}-y`);
+            if (ix) ix.value = layer.x;
+            if (iy) iy.value = layer.y;
+        } else {
+            layer.w = Math.max(20, Math.round(ow + dx));
+            layer.h = Math.max(20, Math.round(oh + dy));
+            box.style.width  = `${(layer.w / cw) * 100}%`;
+            box.style.height = `${(layer.h / ch) * 100}%`;
+            const iw = document.getElementById(`layer-${idx}-w`);
+            const ih = document.getElementById(`layer-${idx}-h`);
+            if (iw) iw.value = layer.w;
+            if (ih) ih.value = layer.h;
+        }
+    }
+
+    function onUp() {
+        mode = null;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
     }
 }
 
@@ -282,6 +472,16 @@ async function createAndGoLive() {
 
     if (preset === 'custom') {
         body.ffmpeg_args.custom_cmd = document.getElementById('create-custom-cmd')?.value || '';
+    } else if (preset === 'advanced_scene') {
+        body.ffmpeg_args.canvas_w = document.getElementById('canvas-w')?.value || 1920;
+        body.ffmpeg_args.canvas_h = document.getElementById('canvas-h')?.value || 1080;
+        body.ffmpeg_args.layers = _advancedLayers;
+
+        if (_advancedLayers.length === 0) {
+            toast('Add at least one layer to stream', 'error');
+            btn.disabled = false; btn.textContent = '🚀 Create & Go Live';
+            return;
+        }
     }
 
     const result = await apiPost('/auto-live', body);
