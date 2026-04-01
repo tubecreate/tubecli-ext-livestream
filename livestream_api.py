@@ -453,113 +453,142 @@ async def api_start_ffmpeg(req: StartFFmpegRequest):
     params["input"] = req.input_source
 
     if req.preset == "advanced_scene":
-        # Dynamic filter builder — uses DXGI ddagrab to avoid black screen on GPU-accel apps
+        # ══════════════════════════════════════════════════════════════
+        # Advanced Scene — Multi-layer compositor (hybrid capture)
+        # ══════════════════════════════════════════════════════════════
+        # Layer types:
+        #   "fullscreen" → ddagrab (crops from full desktop, GPU safe,
+        #                  fixed position — won't follow window moves)
+        #   "window"     → gdigrab by title (follows the window,
+        #                  may black-screen for GPU-accelerated apps)
+        #   "file"       → regular file/image input
+        # ══════════════════════════════════════════════════════════════
         layers = params.get("layers", [])
         if not layers:
             raise HTTPException(400, "Advanced Scene requires at least one layer in custom_args.layers")
-        
+
         canvas_w = int(req.custom_args.get("canvas_w", 1920))
         canvas_h = int(req.custom_args.get("canvas_h", 1080))
         fps = params.get("fps", 30)
-        
-        # ── Strategy: Use ddagrab to capture the ENTIRE desktop once, then crop ──
-        # This avoids the gdigrab black-screen issue entirely.
-        # ddagrab captures the composited desktop output (including GPU-rendered windows).
-        # We crop regions from the full desktop screenshot to create "layers".
-        #
-        # For file-type layers, we use regular -i input.
-        
-        has_window_layers = any(l.get("type", "window") == "window" for l in layers)
-        file_layers = [l for l in layers if l.get("type") != "window"]
-        window_layers = [l for l in layers if l.get("type", "window") == "window"]
-        
+
+        # Classify layers by type
+        fullscreen_layers = [(i, l) for i, l in enumerate(layers) if l.get("type") == "fullscreen"]
+        window_layers     = [(i, l) for i, l in enumerate(layers) if l.get("type", "window") == "window"]
+        file_layers       = [(i, l) for i, l in enumerate(layers) if l.get("type") == "file"]
+
+        has_fullscreen = len(fullscreen_layers) > 0
+        num_fullscreen = len(fullscreen_layers)
+
         inputs = []
         filter_parts = []
-        
-        if has_window_layers:
-            # Use ddagrab as the primary desktop capture source (input [0])
-            # This captures the full composited desktop — no black screen
-            inputs.append(f'-init_hw_device d3d11va=d3d11')
-            # We will generate ddagrab as a filter source, not as an input
-            # So it becomes part of the filter_complex
-        
-        # Add a black canvas as base layer
-        inputs.append(f'-f lavfi -i color=c=black:s={canvas_w}x{canvas_h}:r={fps}:d=86400')
-        # Add silent audio
-        inputs.append('-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100')
-        
-        # Track input index (0=canvas color, 1=audio, file inputs start at 2)
-        file_input_idx = 2
-        file_idx_map = {}  # layer index -> ffmpeg input index
-        
-        for i, layer in enumerate(layers):
-            ltype = layer.get("type", "window")
-            if ltype != "window":
-                src = layer.get("source", "")
-                inputs.append(f'-re -i "{src}"')
-                file_idx_map[i] = file_input_idx
-                file_input_idx += 1
-        
-        # Build filter_complex:
-        # 1. ddagrab captures full desktop → hwdownload → format → [desktop]
-        # 2. For each window layer, crop from [desktop]
-        # 3. For each file layer, scale from its input
-        # 4. Overlay all onto the canvas
-        
-        if has_window_layers:
-            filter_parts.append(
-                f"ddagrab=output_idx=0:draw_mouse=1:framerate={fps},hwdownload,format=bgra,format=yuv420p[desktop]"
-            )
-        
-        layer_labels = []  # list of filter labels per layer in order
-        
-        for i, layer in enumerate(layers):
-            ltype = layer.get("type", "window")
-            w = layer.get("w", canvas_w)
-            h = layer.get("h", canvas_h)
-            x = layer.get("x", 0)
-            y = layer.get("y", 0)
-            
-            if ltype == "window":
-                # Crop region from the full desktop capture
-                # Note: x,y here is where the layer goes on the canvas,
-                # but the source needs a crop position on the desktop.
-                # Since we're compositing, we crop the desktop at (x, y) with size (w, h)
-                # This grabs the region of the desktop where the window is expected.
-                label = f"wl{i}"
-                filter_parts.append(
-                    f"[desktop]crop={w}:{h}:{x}:{y}[{label}]"
-                )
-                layer_labels.append((label, x, y))
+
+        # ── Hardware device init (only if fullscreen/ddagrab layers exist) ──
+        if has_fullscreen:
+            inputs.append("-init_hw_device d3d11va=d3d11")
+
+        # [input 0] = black canvas base
+        inputs.append(f"-f lavfi -i color=c=black:s={canvas_w}x{canvas_h}:r={fps}:d=86400")
+        # [input 1] = silent audio
+        inputs.append("-f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100")
+
+        # Build input index map
+        next_idx = 2
+        layer_input_map = {}
+
+        # gdigrab window inputs (each window = 1 FFmpeg input)
+        for li, layer in window_layers:
+            src = layer.get("source", "")
+            inputs.append(f'-f gdigrab -framerate {fps} -draw_mouse 1 -i title="{src}"')
+            layer_input_map[li] = next_idx
+            next_idx += 1
+
+        # File/video/image inputs
+        IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tiff"}
+        for li, layer in file_layers:
+            src = layer.get("source", "")
+            ext = os.path.splitext(src)[1].lower()
+            if ext in IMAGE_EXTS:
+                # Image: loop the still frame at the target framerate
+                inputs.append(f'-loop 1 -framerate {fps} -i "{src}"')
             else:
-                # Scale file input to target size
-                fi = file_idx_map[i]
-                label = f"fl{i}"
-                filter_parts.append(
-                    f"[{fi}:v]scale={w}:{h},format=yuv420p[{label}]"
-                )
-                layer_labels.append((label, x, y))
-        
-        # Overlay layers onto canvas sequentially
-        current = "[0:v]"  # base canvas
-        for idx, (label, ox, oy) in enumerate(layer_labels):
-            out_label = f"[ov{idx}]"
+                # Video: loop and read in real-time
+                inputs.append(f'-stream_loop -1 -re -i "{src}"')
+            layer_input_map[li] = next_idx
+            next_idx += 1
+
+        # ── ddagrab desktop capture (if any fullscreen layers) ────
+        if has_fullscreen:
             filter_parts.append(
-                f"{current}[{label}]overlay={ox}:{oy}:shortest=1{out_label}"
+                f"ddagrab=output_idx=0:draw_mouse=1:framerate={fps},"
+                f"hwdownload,format=bgra,format=yuv420p[desktop]"
             )
-            current = out_label
-        
+            if num_fullscreen == 1:
+                filter_parts.append("[desktop]null[dsk0]")
+            else:
+                split_outputs = "".join(f"[dsk{j}]" for j in range(num_fullscreen))
+                filter_parts.append(f"[desktop]split={num_fullscreen}{split_outputs}")
+
+        # ── Prepare each layer (in original order = z-order) ──────
+        layer_tags = []
+        fs_counter = 0
+
+        for i, layer in enumerate(layers):
+            ltype = layer.get("type", "window")
+            w = int(layer.get("w", canvas_w))
+            h = int(layer.get("h", canvas_h))
+            x = int(layer.get("x", 0))
+            y = int(layer.get("y", 0))
+
+            if ltype == "fullscreen":
+                # Crop region from full desktop
+                sx = int(layer.get("sx", 0))
+                sy = int(layer.get("sy", 0))
+                dsk_label = f"dsk{fs_counter}"
+                out_label = f"fs{i}"
+                filter_parts.append(
+                    f"[{dsk_label}]crop={w}:{h}:{sx}:{sy},scale={w}:{h}[{out_label}]"
+                )
+                layer_tags.append((out_label, x, y))
+                fs_counter += 1
+
+            elif ltype == "window":
+                # gdigrab by title — follows window movement
+                fi = layer_input_map[i]
+                out_label = f"win{i}"
+                filter_parts.append(
+                    f"[{fi}:v]format=yuv420p,scale={w}:{h}[{out_label}]"
+                )
+                layer_tags.append((out_label, x, y))
+
+            else:
+                # File layer
+                fi = layer_input_map[i]
+                out_label = f"fl{i}"
+                filter_parts.append(
+                    f"[{fi}:v]scale={w}:{h},setsar=1,format=yuv420p[{out_label}]"
+                )
+                layer_tags.append((out_label, x, y))
+
+        # ── Sequential overlay (layer 0 = bottom) ────────────────
+        current = "[0:v]"
+        for idx, (label, ox, oy) in enumerate(layer_tags):
+            out = f"[ov{idx}]"
+            filter_parts.append(
+                f"{current}[{label}]overlay={ox}:{oy}:eof_action=repeat{out}"
+            )
+            current = out
+
         filter_str = "; ".join(filter_parts)
-        
+
         cmd_str = (
             f'{" ".join(inputs)} '
             f'-filter_complex "{filter_str}" '
             f'-map "{current}" -map 1:a '
-            f'-c:v libx264 -preset veryfast '
+            f"-c:v libx264 -preset veryfast "
             f'-b:v {params.get("bitrate", "4500k")} '
             f'-maxrate {params.get("bitrate", "4500k")} '
             f'-bufsize {params.get("bufsize", "9000k")} '
-            f'-pix_fmt yuv420p -g {params.get("gop", "60")} '
+            f"-pix_fmt yuv420p -g {params.get('gop', '60')} "
             f'-c:a aac -b:a 128k '
             f'-f flv "rtmp://a.rtmp.youtube.com/live2/{params["key"]}"'
         )
@@ -727,29 +756,55 @@ async def api_remove_schedule(schedule_id: str):
 # WINDOWS (For Advanced Scene)
 # ══════════════════════════════════════════════════════════════════════
 
-def _get_active_windows() -> List[str]:
+def _get_active_windows() -> List[dict]:
+    """Get visible windows with their positions and sizes."""
     try:
         import ctypes
-        EnumWindows = ctypes.windll.user32.EnumWindows
-        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int))
-        GetWindowText = ctypes.windll.user32.GetWindowTextW
-        GetWindowTextLength = ctypes.windll.user32.GetWindowTextLengthW
-        IsWindowVisible = ctypes.windll.user32.IsWindowVisible
+        import ctypes.wintypes
 
-        titles = []
+        user32 = ctypes.windll.user32
+        EnumWindows = user32.EnumWindows
+        EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_int, ctypes.c_int)
+        GetWindowText = user32.GetWindowTextW
+        GetWindowTextLength = user32.GetWindowTextLengthW
+        IsWindowVisible = user32.IsWindowVisible
+        GetWindowRect = user32.GetWindowRect
+
+        class RECT(ctypes.Structure):
+            _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                        ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+        windows = []
+        seen_titles = set()
+
         def foreach_window(hwnd, lParam):
             if IsWindowVisible(hwnd):
                 length = GetWindowTextLength(hwnd)
                 if length > 0:
                     buff = ctypes.create_unicode_buffer(length + 1)
                     GetWindowText(hwnd, buff, length + 1)
-                    if buff.value and len(buff.value.strip()) > 0:
-                        titles.append(buff.value)
+                    title = buff.value.strip()
+                    if title and title not in seen_titles:
+                        seen_titles.add(title)
+                        rect = RECT()
+                        GetWindowRect(hwnd, ctypes.byref(rect))
+                        w = rect.right - rect.left
+                        h = rect.bottom - rect.top
+                        if w > 50 and h > 50:  # skip tiny/hidden windows
+                            windows.append({
+                                "title": title,
+                                "x": max(0, rect.left),
+                                "y": max(0, rect.top),
+                                "w": w,
+                                "h": h,
+                            })
             return True
 
         EnumWindows(EnumWindowsProc(foreach_window), 0)
         ignore_list = ["Program Manager", "Settings", "Microsoft Store"]
-        return sorted(list(set([t for t in titles if t not in ignore_list])))
+        windows = [w for w in windows if w["title"] not in ignore_list]
+        windows.sort(key=lambda w: w["title"])
+        return windows
     except Exception as e:
         logger.error(f"Failed to get active windows: {e}")
         return []

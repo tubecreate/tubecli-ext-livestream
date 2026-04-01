@@ -257,23 +257,24 @@ function onPresetChange() {
 }
 
 // ─── Advanced Scene Logic ───
+let _windowsData = []; // {title, x, y, w, h}[]
+
 async function fetchActiveWindows() {
-    if (_activeWindows.length > 0) return; // cache
     const data = await apiGet('/windows');
     if (data?.status === 'success') {
-        _activeWindows = data.windows || [];
-        renderAdvancedLayers(); // re-render to update select options
+        _windowsData = data.windows || [];
+        _activeWindows = _windowsData.map(w => w.title || w);
+        renderAdvancedLayers();
     }
 }
 
 function addAdvancedLayer() {
     _advancedLayers.push({
-        type: 'window',
+        type: 'window',     // 'fullscreen', 'window', or 'file'
         source: '',
-        x: 0,
-        y: 0,
-        w: 1920,
-        h: 1080
+        x: 0, y: 0,
+        w: 1920, h: 1080,
+        sx: 0, sy: 0,       // source crop (fullscreen only)
     });
     renderAdvancedLayers();
 }
@@ -284,46 +285,86 @@ function removeAdvancedLayer(index) {
 }
 
 function updateAdvancedLayer(index, field, value) {
-    if (_advancedLayers[index]) {
-        _advancedLayers[index][field] = field === 'x' || field === 'y' || field === 'w' || field === 'h' ? Number(value) : value;
-        renderVisualCanvas();
+    if (!_advancedLayers[index]) return;
+    const numFields = ['x', 'y', 'w', 'h', 'sx', 'sy'];
+    _advancedLayers[index][field] = numFields.includes(field) ? Number(value) : value;
+    renderVisualCanvas();
+}
+
+function onWindowSelected(layerIndex, title) {
+    const layer = _advancedLayers[layerIndex];
+    if (!layer) return;
+    layer.source = title;
+    const winData = _windowsData.find(w => w.title === title);
+    if (winData) {
+        layer.w = winData.w;
+        layer.h = winData.h;
+        if (layer.type === 'fullscreen') {
+            layer.sx = winData.x;
+            layer.sy = winData.y;
+        }
     }
+    renderAdvancedLayers();
 }
 
 function renderAdvancedLayers() {
     renderVisualCanvas();
     const container = document.getElementById('layers-container');
     if (!container) return;
-    
+
     container.innerHTML = _advancedLayers.map((layer, i) => {
-        const isWindow = layer.type === 'window';
-        
-        let sourceInput = '';
-        if (isWindow) {
-            const options = _activeWindows.map(w => `<option value="${esc(w)}" ${w === layer.source ? 'selected' : ''}>${esc(w)}</option>`).join('');
-            sourceInput = `
-                <select class="ls-layer-input" style="flex:2;min-width:180px;" onchange="updateAdvancedLayer(${i}, 'source', this.value)">
-                    <option value="">-- Select Window --</option>
+        const t = layer.type;
+        const icon = t === 'fullscreen' ? '🖥️' : t === 'window' ? '🪟' : '📁';
+
+        // Source input varies by type
+        let sourceHtml = '';
+        if (t === 'window' || t === 'fullscreen') {
+            const options = _windowsData.map(w => {
+                const title = w.title || w;
+                return `<option value="${esc(title)}" ${title === layer.source ? 'selected' : ''}>${esc(title)} (${w.w}\u00d7${w.h})</option>`;
+            }).join('');
+            const placeholder = t === 'window' ? '-- Ch\u1ecdn c\u1eeda s\u1ed5 --' : '-- Ch\u1ecdn v\u00f9ng (optional) --';
+            sourceHtml = `
+                <select class="ls-layer-input" style="flex:2;min-width:180px;" onchange="onWindowSelected(${i}, this.value)">
+                    <option value="">${placeholder}</option>
                     ${options}
-                </select>
-            `;
+                </select>`;
         } else {
-            sourceInput = `<input type="text" class="ls-layer-input" style="flex:2;min-width:180px;" placeholder="Path to .mp4 or image" value="${esc(layer.source)}" oninput="updateAdvancedLayer(${i}, 'source', this.value)">`;
+            sourceHtml = `<input type="text" class="ls-layer-input" style="flex:2;min-width:180px;" placeholder="C:\\\\video.mp4 or image.png" value="${esc(layer.source)}" oninput="updateAdvancedLayer(${i}, 'source', this.value)">`;
         }
+
+        // Crop position (fullscreen only)
+        const cropHtml = t === 'fullscreen' ? `
+                <div style="display:flex;gap:4px;align-items:center;margin-top:4px;">
+                    <span style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">\ud83d\udccd Crop:</span>
+                    SX: <input type="number" class="ls-layer-input ls-num-input" value="${layer.sx || 0}" oninput="updateAdvancedLayer(${i}, 'sx', this.value)">
+                    SY: <input type="number" class="ls-layer-input ls-num-input" value="${layer.sy || 0}" oninput="updateAdvancedLayer(${i}, 'sy', this.value)">
+                </div>` : '';
+
+        // Hint text
+        let hintHtml = '';
+        if (t === 'window') hintHtml = `<div style="font-size:0.72rem;color:#f5a623;margin-top:4px;opacity:0.8;">\u26a0\ufe0f GPU apps (Chrome, games) c\u00f3 th\u1ec3 b\u1ecb \u0111en \u2192 d\u00f9ng Full Screen ho\u1eb7c t\u1eaft HW Accel.</div>`;
+        else if (t === 'fullscreen') hintHtml = `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;">\u2705 GPU safe. V\u1ecb tr\u00ed c\u1ed1 \u0111\u1ecbnh \u2014 ko \u0111i theo c\u1eeda s\u1ed5 khi di chuy\u1ec3n.</div>`;
 
         return `
         <div class="ls-layer-row">
             <div class="ls-layer-header">
-                <span class="ls-tag">Layer ${i+1}</span>
-                <button class="ls-btn ls-btn-sm ls-btn-danger" onclick="removeAdvancedLayer(${i})">✕</button>
+                <span class="ls-tag">${icon} Layer ${i+1}</span>
+                <div style="display:flex;gap:4px;">
+                    ${i > 0 ? `<button class="ls-btn ls-btn-sm" onclick="moveLayer(${i}, -1)" title="Move up">\u2191</button>` : ''}
+                    ${i < _advancedLayers.length - 1 ? `<button class="ls-btn ls-btn-sm" onclick="moveLayer(${i}, 1)" title="Move down">\u2193</button>` : ''}
+                    <button class="ls-btn ls-btn-sm ls-btn-danger" onclick="removeAdvancedLayer(${i})">\u2715</button>
+                </div>
             </div>
             <div class="ls-layer-grid">
                 <select class="ls-layer-input" onchange="updateAdvancedLayer(${i}, 'type', this.value); renderAdvancedLayers()">
-                    <option value="window" ${layer.type === 'window' ? 'selected' : ''}>🖥️ Window</option>
-                    <option value="file" ${layer.type === 'file' ? 'selected' : ''}>📁 File</option>
+                    <option value="fullscreen" ${t === 'fullscreen' ? 'selected' : ''}>\ud83d\udda5\ufe0f Full Screen (GPU safe)</option>
+                    <option value="window" ${t === 'window' ? 'selected' : ''}>\ud83e\ude9f Window (follows)</option>
+                    <option value="file" ${t === 'file' ? 'selected' : ''}>\ud83d\udcc1 File / Image</option>
                 </select>
-                ${sourceInput}
-                <div style="display:flex;gap:4px;align-items:center;">
+                ${sourceHtml}
+                <div style="display:flex;gap:4px;align-items:center;margin-top:4px;">
+                    <span style="font-size:0.75rem;color:var(--text-muted);white-space:nowrap;">\ud83c\udfaf Canvas:</span>
                     X: <input type="number" id="layer-${i}-x" class="ls-layer-input ls-num-input" value="${layer.x}" oninput="updateAdvancedLayer(${i}, 'x', this.value)">
                     Y: <input type="number" id="layer-${i}-y" class="ls-layer-input ls-num-input" value="${layer.y}" oninput="updateAdvancedLayer(${i}, 'y', this.value)">
                 </div>
@@ -331,9 +372,26 @@ function renderAdvancedLayers() {
                     W: <input type="number" id="layer-${i}-w" class="ls-layer-input ls-num-input" value="${layer.w}" oninput="updateAdvancedLayer(${i}, 'w', this.value)">
                     H: <input type="number" id="layer-${i}-h" class="ls-layer-input ls-num-input" value="${layer.h}" oninput="updateAdvancedLayer(${i}, 'h', this.value)">
                 </div>
+                ${cropHtml}
+                ${hintHtml}
             </div>
         </div>`;
     }).join('');
+
+    container.innerHTML += `
+        <button class="ls-btn ls-btn-sm ls-btn-outline" onclick="fetchActiveWindows()" style="margin-top:8px;width:100%;">
+            \u21bb Refresh Windows
+        </button>`;
+}
+
+// Move layer up or down (changes z-order)
+function moveLayer(index, direction) {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= _advancedLayers.length) return;
+    const tmp = _advancedLayers[index];
+    _advancedLayers[index] = _advancedLayers[newIndex];
+    _advancedLayers[newIndex] = tmp;
+    renderAdvancedLayers();
 }
 
 // ─── Visual Canvas ───
