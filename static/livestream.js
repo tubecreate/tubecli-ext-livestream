@@ -330,7 +330,12 @@ function renderAdvancedLayers() {
                     ${options}
                 </select>`;
         } else {
-            sourceHtml = `<input type="text" class="ls-layer-input" style="flex:2;min-width:180px;" placeholder="C:\\\\video.mp4 or image.png" value="${esc(layer.source)}" oninput="updateAdvancedLayer(${i}, 'source', this.value)">`;
+            sourceHtml = `
+                <div style="display:flex;gap:4px;align-items:center;flex:2;min-width:180px;">
+                    <input type="text" class="ls-layer-input" style="flex:1;" id="layer-src-${i}" placeholder="Path to file on server" value="${esc(layer.source)}" oninput="updateAdvancedLayer(${i}, 'source', this.value)">
+                    <input type="file" id="layer-file-${i}" style="display:none;" accept="image/*,video/*" onchange="uploadLayerFile(${i}, this)">
+                    <button class="ls-btn ls-btn-sm ls-btn-primary" onclick="document.getElementById('layer-file-${i}').click()" title="Upload file">📤</button>
+                </div>`;
         }
 
         // Crop position (fullscreen only)
@@ -392,6 +397,38 @@ function moveLayer(index, direction) {
     _advancedLayers[index] = _advancedLayers[newIndex];
     _advancedLayers[newIndex] = tmp;
     renderAdvancedLayers();
+}
+
+// Upload file for a layer
+async function uploadLayerFile(layerIndex, fileInput) {
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const srcInput = document.getElementById(`layer-src-${layerIndex}`);
+    if (srcInput) srcInput.value = 'Uploading...';
+
+    try {
+        const resp = await fetch('/api/v1/livestream/upload', {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await resp.json();
+        if (data.status === 'success') {
+            updateAdvancedLayer(layerIndex, 'source', data.path);
+            showToast(`✅ Uploaded: ${data.filename}`, 'success');
+            renderAdvancedLayers();
+        } else {
+            showToast(`❌ Upload failed: ${data.detail || 'Unknown error'}`, 'error');
+            if (srcInput) srcInput.value = '';
+        }
+    } catch (e) {
+        showToast(`❌ Upload error: ${e.message}`, 'error');
+        if (srcInput) srcInput.value = '';
+    }
+    fileInput.value = ''; // reset
 }
 
 // ─── Visual Canvas ───

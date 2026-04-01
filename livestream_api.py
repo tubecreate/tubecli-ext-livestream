@@ -13,7 +13,7 @@ import threading
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
 # ── Import auth_manager exactly like sheets_api.py ──────────────────
@@ -34,6 +34,8 @@ except ImportError:
 LIVESTREAM_DATA_DIR = os.path.join(str(DATA_DIR), "livestream")
 LIVESTREAM_DATA_FILE = os.path.join(LIVESTREAM_DATA_DIR, "livestream_data.json")
 SCHEDULES_FILE = os.path.join(LIVESTREAM_DATA_DIR, "schedules.json")
+UPLOADS_DIR = os.path.join(LIVESTREAM_DATA_DIR, "uploads")
+os.makedirs(UPLOADS_DIR, exist_ok=True)
 YT_API_BASE = "https://www.googleapis.com/youtube/v3"
 
 # ── FFmpeg presets ────────────────────────────────────────────────────
@@ -840,3 +842,54 @@ async def api_get_presets():
             for k, v in FFMPEG_PRESETS.items()
         }
     }
+
+
+# ══════════════════════════════════════════════════════════════════════
+# FILE UPLOAD (for Advanced Scene layers)
+# ══════════════════════════════════════════════════════════════════════
+
+@router.post("/upload")
+async def api_upload_file(file: UploadFile = File(...)):
+    """Upload a file (image/video) for use in Advanced Scene layers."""
+    if not file.filename:
+        raise HTTPException(400, "No filename provided")
+    
+    # Sanitize filename and save
+    safe_name = file.filename.replace("..", "").replace("/", "_").replace("\\", "_")
+    # Add timestamp to avoid collisions
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    name, ext = os.path.splitext(safe_name)
+    final_name = f"{name}_{ts}{ext}"
+    save_path = os.path.join(UPLOADS_DIR, final_name)
+    
+    try:
+        content = await file.read()
+        with open(save_path, "wb") as f:
+            f.write(content)
+        
+        # Return the absolute path (FFmpeg needs absolute paths)
+        abs_path = os.path.abspath(save_path)
+        return {
+            "status": "success",
+            "filename": final_name,
+            "path": abs_path,
+            "size": len(content),
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Upload failed: {e}")
+
+
+@router.get("/uploads")
+async def api_list_uploads():
+    """List all uploaded files."""
+    files = []
+    if os.path.exists(UPLOADS_DIR):
+        for f in sorted(os.listdir(UPLOADS_DIR)):
+            fp = os.path.join(UPLOADS_DIR, f)
+            if os.path.isfile(fp):
+                files.append({
+                    "filename": f,
+                    "path": os.path.abspath(fp),
+                    "size": os.path.getsize(fp),
+                })
+    return {"status": "success", "files": files}
