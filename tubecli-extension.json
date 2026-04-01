@@ -1,0 +1,23 @@
+{
+  "name": "livestream",
+  "version": "1.0.0",
+  "description": "YouTube Livestream Manager — Create broadcasts, manage stream keys, and push RTMP with FFmpeg",
+  "author": "TubeCreate",
+  "icon": "📡",
+  "entry": "extension.py",
+  "extension_class": "LivestreamExtension",
+  "category": "extension",
+  "tags": ["youtube", "livestream", "ffmpeg", "rtmp", "broadcast", "streaming"],
+  "dependencies": [
+    "requests>=2.28"
+  ],
+  "nodes": [],
+  "skill_md": "SKILL.md",
+  "ui_static": "static",
+  "api_prefix": "/api/v1/livestream",
+  "min_tubecli_version": "0.1.0",
+  "requires_extensions": ["auth_manager"],
+  "screenshots": [],
+  "homepage": "",
+  "license": "MIT"
+}
