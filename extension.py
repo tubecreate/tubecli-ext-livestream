@@ -1,5 +1,5 @@
-"""
-Livestream Extension — YouTube Livestream Manager with FFmpeg RTMP push.
+﻿"""
+Livestream Extension â€” YouTube Livestream Manager with FFmpeg RTMP push.
 Manages broadcasts, stream keys, and FFmpeg processes for multi-stream support.
 """
 import os
@@ -17,7 +17,7 @@ try:
     from tubecli.core.extension_manager import Extension
     from tubecli.config import DATA_DIR
 except ImportError:
-    from zhiying.core.extension_manager import Extension
+    from TubeCLI.core.extension_manager import Extension
     DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data")
 
 logger = logging.getLogger("LivestreamExtension")
@@ -32,43 +32,43 @@ YT_API_BASE = "https://www.googleapis.com/youtube/v3"
 # FFmpeg presets
 FFMPEG_PRESETS = {
     "file": {
-        "label": "📁 File → RTMP",
+        "label": "ðŸ“ File â†’ RTMP",
         "description": "Stream a video file to YouTube",
         "template": '-re -i "{input}" -c:v libx264 -preset veryfast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "4500k", "bufsize": "9000k", "gop": "60"},
     },
     "file_loop": {
-        "label": "🔁 Loop File → RTMP",
+        "label": "ðŸ” Loop File â†’ RTMP",
         "description": "Loop a video file continuously (24/7 stream)",
         "template": '-stream_loop -1 -re -i "{input}" -c:v libx264 -preset veryfast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "4500k", "bufsize": "9000k", "gop": "60"},
     },
     "camera_win": {
-        "label": "📷 Camera → RTMP (Windows)",
+        "label": "ðŸ“· Camera â†’ RTMP (Windows)",
         "description": "Stream from webcam + microphone",
         "template": '-f dshow -i video="{camera}":audio="{mic}" -c:v libx264 -preset veryfast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "4500k", "bufsize": "9000k", "gop": "60", "camera": "Integrated Camera", "mic": "Microphone"},
     },
     "screen_win": {
-        "label": "🖥️ Screen → RTMP (Windows GDI)",
-        "description": "Stream desktop screen capture (GDI — may show black for GPU apps)",
+        "label": "ðŸ–¥ï¸ Screen â†’ RTMP (Windows GDI)",
+        "description": "Stream desktop screen capture (GDI â€” may show black for GPU apps)",
         "template": '-f gdigrab -draw_mouse {draw_mouse} -framerate {fps} -i desktop -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v libx264 -preset ultrafast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -shortest -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "3000k", "bufsize": "6000k", "gop": "60", "fps": "30", "draw_mouse": "1"},
     },
     "screen_win_dd": {
-        "label": "🖥️ Screen → RTMP (Windows DXGI ✅)",
-        "description": "Stream desktop via DirectX Desktop Duplication — fixes black screen for GPU-accelerated apps (Chrome, OBS, games, etc.)",
+        "label": "ðŸ–¥ï¸ Screen â†’ RTMP (Windows DXGI âœ…)",
+        "description": "Stream desktop via DirectX Desktop Duplication â€” fixes black screen for GPU-accelerated apps (Chrome, OBS, games, etc.)",
         "template": '-init_hw_device d3d11va=d3d11 -filter_complex "ddagrab=output_idx={monitor}:draw_mouse={draw_mouse}:framerate={fps},hwdownload,format=bgra,format=yuv420p[v];anullsrc=channel_layout=stereo:sample_rate=44100[a]" -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -g {gop} -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "3000k", "bufsize": "6000k", "gop": "60", "fps": "30", "monitor": "0", "draw_mouse": "1"},
     },
     "screen_linux": {
-        "label": "🖥️ Screen → RTMP (Linux)",
+        "label": "ðŸ–¥ï¸ Screen â†’ RTMP (Linux)",
         "description": "Stream desktop screen capture (X11)",
         "template": '-f x11grab -framerate {fps} -video_size {resolution} -i :0.0 -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v libx264 -preset ultrafast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -shortest -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "3000k", "bufsize": "6000k", "gop": "60", "fps": "30", "resolution": "1920x1080"},
     },
     "custom": {
-        "label": "⚙️ Custom Command",
+        "label": "âš™ï¸ Custom Command",
         "description": "Write your own FFmpeg command",
         "template": '{custom_cmd}',
         "defaults": {},
@@ -111,7 +111,7 @@ class LivestreamManager:
             return auth_manager
         except ImportError:
             try:
-                from zhiying.extensions.auth_manager.extension import auth_manager
+                from TubeCLI.extensions.auth_manager.extension import auth_manager
                 return auth_manager
             except ImportError:
                 logger.error("auth_manager extension not available")

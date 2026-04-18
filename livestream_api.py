@@ -1,5 +1,5 @@
 """
-Livestream Extension — FastAPI routes.
+Livestream Extension â€” FastAPI routes.
 YouTube Livestream management and FFmpeg RTMP push control.
 Pattern mirrors sheets_api.py: import auth_manager directly.
 """
@@ -16,16 +16,16 @@ from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from pydantic import BaseModel
 
-# ── Import auth_manager exactly like sheets_api.py ──────────────────
+# â”€â”€ Import auth_manager exactly like sheets_api.py â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try:
     from tubecli.extensions.auth_manager.extension import auth_manager as am
 except ImportError:
-    from zhiying.extensions.auth_manager.extension import auth_manager as am
+    from TubeCLI.extensions.auth_manager.extension import auth_manager as am
 
 router = APIRouter(prefix="/api/v1/livestream", tags=["livestream"])
 logger = logging.getLogger("LivestreamAPI")
 
-# ── Data paths ────────────────────────────────────────────────────────
+# â”€â”€ Data paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 try:
     from tubecli.config import DATA_DIR
 except ImportError:
@@ -38,63 +38,63 @@ UPLOADS_DIR = os.path.join(LIVESTREAM_DATA_DIR, "uploads")
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 YT_API_BASE = "https://www.googleapis.com/youtube/v3"
 
-# ── FFmpeg presets ────────────────────────────────────────────────────
+# â”€â”€ FFmpeg presets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 FFMPEG_PRESETS = {
     "file": {
-        "label": "📁 File → RTMP",
+        "label": "ðŸ“ File â†’ RTMP",
         "description": "Stream a video file to YouTube",
         "template": '-re -i "{input}" -c:v libx264 -preset veryfast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "4500k", "bufsize": "9000k", "gop": "60"},
     },
     "file_loop": {
-        "label": "🔁 Loop File → RTMP",
+        "label": "ðŸ” Loop File â†’ RTMP",
         "description": "Loop a video file continuously (24/7 stream)",
         "template": '-stream_loop -1 -re -i "{input}" -c:v libx264 -preset veryfast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "4500k", "bufsize": "9000k", "gop": "60"},
     },
     "camera_win": {
-        "label": "📷 Camera → RTMP (Windows)",
+        "label": "ðŸ“· Camera â†’ RTMP (Windows)",
         "description": "Stream from webcam + microphone",
         "template": '-f dshow -i video="{camera}":audio="{mic}" -c:v libx264 -preset veryfast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -ar 44100 -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "4500k", "bufsize": "9000k", "gop": "60", "camera": "Integrated Camera", "mic": "Microphone"},
     },
     "screen_win": {
-        "label": "🖥️ Screen → RTMP (Windows GDI)",
-        "description": "Stream desktop screen capture (GDI — may show black for GPU apps)",
+        "label": "ðŸ–¥ï¸ Screen â†’ RTMP (Windows GDI)",
+        "description": "Stream desktop screen capture (GDI â€” may show black for GPU apps)",
         "template": '-f gdigrab -draw_mouse {draw_mouse} -framerate {fps} -i desktop -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v libx264 -preset ultrafast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -shortest -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "3000k", "bufsize": "6000k", "gop": "60", "fps": "30", "draw_mouse": "1"},
     },
     "screen_win_dd": {
-        "label": "🖥️ Screen → RTMP (Windows DXGI ✅)",
-        "description": "Stream desktop via DirectX Desktop Duplication — fixes black screen for GPU-accelerated apps (Chrome, OBS, games, etc.)",
+        "label": "ðŸ–¥ï¸ Screen â†’ RTMP (Windows DXGI âœ…)",
+        "description": "Stream desktop via DirectX Desktop Duplication â€” fixes black screen for GPU-accelerated apps (Chrome, OBS, games, etc.)",
         "template": '-init_hw_device d3d11va=d3d11 -filter_complex "ddagrab=output_idx={monitor}:draw_mouse={draw_mouse}:framerate={fps},hwdownload,format=bgra,format=yuv420p[v];anullsrc=channel_layout=stereo:sample_rate=44100[a]" -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -g {gop} -c:a aac -b:a 128k -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "3000k", "bufsize": "6000k", "gop": "60", "fps": "30", "monitor": "0", "draw_mouse": "1"},
     },
     "screen_linux": {
-        "label": "🖥️ Screen → RTMP (Linux)",
+        "label": "ðŸ–¥ï¸ Screen â†’ RTMP (Linux)",
         "description": "Stream desktop screen capture (X11)",
         "template": '-f x11grab -framerate {fps} -video_size {resolution} -i :0.0 -f lavfi -i anullsrc=channel_layout=stereo:sample_rate=44100 -c:v libx264 -preset ultrafast -b:v {bitrate} -maxrate {bitrate} -bufsize {bufsize} -pix_fmt yuv420p -g {gop} -c:a aac -b:a 128k -shortest -f flv "rtmp://a.rtmp.youtube.com/live2/{key}"',
         "defaults": {"bitrate": "3000k", "bufsize": "6000k", "gop": "60", "fps": "30", "resolution": "1920x1080"},
     },
     "custom": {
-        "label": "⚙️ Custom Command",
+        "label": "âš™ï¸ Custom Command",
         "description": "Write your own FFmpeg command",
         "template": '{custom_cmd}',
         "defaults": {},
     },
     "advanced_scene": {
-        "label": "✨ Advanced Scene (Layers)",
-        "description": "Composite multiple windows and files dynamically (uses DXGI capture — no black screen)",
+        "label": "âœ¨ Advanced Scene (Layers)",
+        "description": "Composite multiple windows and files dynamically (uses DXGI capture â€” no black screen)",
         "template": "{custom_cmd}",
         "defaults": {"fps": "30", "bitrate": "4500k", "bufsize": "9000k", "gop": "60"},
     },
 }
 
-# ── In-memory FFmpeg sessions (per server process) ────────────────────
+# â”€â”€ In-memory FFmpeg sessions (per server process) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _ffmpeg_sessions: Dict[str, dict] = {}
 
 
-# ── Data helpers ──────────────────────────────────────────────────────
+# â”€â”€ Data helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _load_data() -> dict:
     os.makedirs(LIVESTREAM_DATA_DIR, exist_ok=True)
@@ -129,10 +129,31 @@ def _save_schedules(schedules: list):
         json.dump(schedules, f, indent=2, ensure_ascii=False)
 
 
-# ── Auth helpers — same as sheets_api.py ─────────────────────────────
+# â”€â”€ Auth helpers â€” same as sheets_api.py â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _get_token(token_id: str) -> Optional[str]:
-    """Get active access token via auth_manager (auto-refresh)."""
+    """Get active access token via auth_manager (auto-refresh).
+    If token_id is missing, fallback to default_calendar_email in global_settings.
+    """
+    if token_id in ("", "default", "auto"):
+        # Try to resolve token_id using default calendar email
+        try:
+            settings_file = os.path.join(str(DATA_DIR), "global_settings.json")
+            if os.path.exists(settings_file):
+                with open(settings_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    email = data.get("default_calendar_email", "")
+                    if email:
+                        tokens = am.list_tokens("google")
+                        for t in tokens:
+                            if t.get("authorized_email", "").lower() == email.lower():
+                                scopes = t.get("scopes", [])
+                                if any("youtube" in s for s in scopes):
+                                    token_id = t["token_id"]
+                                    break
+        except Exception as e:
+            logger.warning(f"Failed to resolve default token_id: {e}")
+
     return am.get_active_token(token_id)
 
 
@@ -144,7 +165,7 @@ def _yt_headers(token: str) -> dict:
     }
 
 
-# ── Request models ────────────────────────────────────────────────────
+# â”€â”€ Request models â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class CreateBroadcastRequest(BaseModel):
     token_id: str
@@ -194,13 +215,13 @@ class AddScheduleRequest(BaseModel):
     frame_rate: str = "30fps"
 
 
-# ══════════════════════════════════════════════════════════════════════
-# CREDENTIALS ENDPOINT — Same pattern as sheets_api.py lines 52-55
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# CREDENTIALS ENDPOINT â€” Same pattern as sheets_api.py lines 52-55
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 @router.get("/credentials")
 async def api_list_youtube_credentials():
-    """List auth tokens that have YouTube scope — mirrors sheets_api.py."""
+    """List auth tokens that have YouTube scope â€” mirrors sheets_api.py."""
     tokens = [
         t for t in am.list_tokens("google")
         if any("youtube" in s for s in t.get("scopes", []))
@@ -219,9 +240,9 @@ async def api_list_youtube_credentials():
     }
 
 
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # BROADCASTS
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 @router.get("/broadcasts")
 async def api_list_broadcasts(token_id: str = "", include_youtube: bool = False):
@@ -364,7 +385,7 @@ async def api_delete_broadcast(broadcast_id: str, token_id: str = ""):
 
 @router.post("/broadcasts/{broadcast_id}/transition")
 async def api_transition_broadcast(broadcast_id: str, req: TransitionRequest):
-    """Transition broadcast: testing → live → complete."""
+    """Transition broadcast: testing â†’ live â†’ complete."""
     import requests as http
 
     token = _get_token(req.token_id)
@@ -386,9 +407,9 @@ async def api_transition_broadcast(broadcast_id: str, req: TransitionRequest):
     return {"status": "success", "message": f"Broadcast transitioned to '{req.target_status}'."}
 
 
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # FFMPEG SESSIONS
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _stop_ffmpeg_session(session_id: str):
     sess = _ffmpeg_sessions.get(session_id)
@@ -450,21 +471,53 @@ async def api_start_ffmpeg(req: StartFFmpegRequest):
     if not preset_cfg:
         raise HTTPException(400, f"Unknown preset '{req.preset}'. Available: {list(FFMPEG_PRESETS.keys())}")
 
+    # Helper to resolve Douyin/TikTok links to HLS/m3u8 URLs
+    async def _resolve_url(url: str) -> str:
+        if not url or not any(k in url for k in ["douyin.com", "tiktok.com", "iesdouyin.com"]):
+            return url
+        try:
+            from tubecli.extensions.douyin_downloader.link_parser import LinkParser
+            from tubecli.extensions.douyin_downloader.api_client import APIClient
+            from tubecli.config import DATA_DIR
+            import json
+            
+            settings_file = os.path.join(DATA_DIR, "downloader_settings.json")
+            cookie = ""
+            if os.path.exists(settings_file):
+                try:
+                    with open(settings_file, "r", encoding="utf-8") as f:
+                        cookie = json.load(f).get("cookie_douyin", "")
+                except Exception:
+                    pass
+            
+            platform, detail_id = await LinkParser.parse(url, cookie=cookie)
+            info = await APIClient.get_video_info(platform, detail_id, cookie)
+            if info and info.download_url:
+                if info.type == "live":
+                    logger.info(f"Resolved live link to HLS: {info.download_url}")
+                else:
+                    logger.info(f"Resolved {info.type} link to URL: {info.download_url}")
+                return info.download_url
+            raise Exception("Live room is offline or unable to get stream URL.")
+        except Exception as e:
+            logger.error(f"Failed to resolve link: {e}")
+            raise HTTPException(400, f"Link resolve error: {e}")
+
     params = {**preset_cfg.get("defaults", {}), **(req.custom_args or {})}
     params["key"] = req.stream_key
-    params["input"] = req.input_source
+    params["input"] = await _resolve_url(req.input_source)
 
     if req.preset == "advanced_scene":
-        # ══════════════════════════════════════════════════════════════
-        # Advanced Scene — Multi-layer compositor (hybrid capture)
-        # ══════════════════════════════════════════════════════════════
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+        # Advanced Scene â€” Multi-layer compositor (hybrid capture)
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         # Layer types:
-        #   "fullscreen" → ddagrab (crops from full desktop, GPU safe,
-        #                  fixed position — won't follow window moves)
-        #   "window"     → gdigrab by title (follows the window,
+        #   "fullscreen" â†’ ddagrab (crops from full desktop, GPU safe,
+        #                  fixed position â€” won't follow window moves)
+        #   "window"     â†’ gdigrab by title (follows the window,
         #                  may black-screen for GPU-accelerated apps)
-        #   "file"       → regular file/image input
-        # ══════════════════════════════════════════════════════════════
+        #   "file"       â†’ regular file/image input
+        # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
         layers = params.get("layers", [])
         if not layers:
             raise HTTPException(400, "Advanced Scene requires at least one layer in custom_args.layers")
@@ -484,7 +537,7 @@ async def api_start_ffmpeg(req: StartFFmpegRequest):
         inputs = []
         filter_parts = []
 
-        # ── Hardware device init (only if fullscreen/ddagrab layers exist) ──
+        # â”€â”€ Hardware device init (only if fullscreen/ddagrab layers exist) â”€â”€
         if has_fullscreen:
             inputs.append("-init_hw_device d3d11va=d3d11")
 
@@ -508,7 +561,8 @@ async def api_start_ffmpeg(req: StartFFmpegRequest):
         IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", ".tiff"}
         for li, layer in file_layers:
             src = layer.get("source", "")
-            ext = os.path.splitext(src)[1].lower()
+            src = await _resolve_url(src)
+            ext = os.path.splitext(src.split('?')[0])[1].lower()
             if ext in IMAGE_EXTS:
                 # Image: loop the still frame at the target framerate
                 inputs.append(f'-loop 1 -framerate {fps} -i "{src}"')
@@ -518,7 +572,7 @@ async def api_start_ffmpeg(req: StartFFmpegRequest):
             layer_input_map[li] = next_idx
             next_idx += 1
 
-        # ── ddagrab desktop capture (if any fullscreen layers) ────
+        # â”€â”€ ddagrab desktop capture (if any fullscreen layers) â”€â”€â”€â”€
         if has_fullscreen:
             filter_parts.append(
                 f"ddagrab=output_idx=0:draw_mouse=1:framerate={fps},"
@@ -530,7 +584,7 @@ async def api_start_ffmpeg(req: StartFFmpegRequest):
                 split_outputs = "".join(f"[dsk{j}]" for j in range(num_fullscreen))
                 filter_parts.append(f"[desktop]split={num_fullscreen}{split_outputs}")
 
-        # ── Prepare each layer (in original order = z-order) ──────
+        # â”€â”€ Prepare each layer (in original order = z-order) â”€â”€â”€â”€â”€â”€
         layer_tags = []
         fs_counter = 0
 
@@ -554,7 +608,7 @@ async def api_start_ffmpeg(req: StartFFmpegRequest):
                 fs_counter += 1
 
             elif ltype == "window":
-                # gdigrab by title — follows window movement
+                # gdigrab by title â€” follows window movement
                 fi = layer_input_map[i]
                 out_label = f"win{i}"
                 filter_parts.append(
@@ -571,7 +625,7 @@ async def api_start_ffmpeg(req: StartFFmpegRequest):
                 )
                 layer_tags.append((out_label, x, y))
 
-        # ── Sequential overlay (layer 0 = bottom) ────────────────
+        # â”€â”€ Sequential overlay (layer 0 = bottom) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         current = "[0:v]"
         for idx, (label, ox, oy) in enumerate(layer_tags):
             out = f"[ov{idx}]"
@@ -682,9 +736,9 @@ async def api_get_ffmpeg_log(session_id: str, tail: int = 50):
         raise HTTPException(500, str(e))
 
 
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # AUTO GO LIVE (One-click)
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 @router.post("/auto-live")
 async def api_auto_go_live(req: AutoLiveRequest):
@@ -715,7 +769,7 @@ async def api_auto_go_live(req: AutoLiveRequest):
             "status": "success",
             "broadcast": broadcast,
             "ffmpeg_session_id": ffmpeg_result.get("session_id"),
-            "message": f"🔴 LIVE! '{req.title}' is streaming.",
+            "message": f"ðŸ”´ LIVE! '{req.title}' is streaming.",
         }
     except HTTPException as e:
         return {
@@ -726,9 +780,9 @@ async def api_auto_go_live(req: AutoLiveRequest):
         }
 
 
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # SCHEDULES
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 @router.get("/schedules")
 async def api_list_schedules():
@@ -754,9 +808,9 @@ async def api_remove_schedule(schedule_id: str):
     return {"status": "success"}
 
 
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # WINDOWS (For Advanced Scene)
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _get_active_windows() -> List[dict]:
     """Get visible windows with their positions and sizes."""
@@ -817,9 +871,9 @@ async def api_get_windows():
     return {"status": "success", "windows": windows}
 
 
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # UTILITIES
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 @router.get("/ffmpeg-check")
 async def api_check_ffmpeg():
@@ -844,9 +898,9 @@ async def api_get_presets():
     }
 
 
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # FILE UPLOAD (for Advanced Scene layers)
-# ══════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 @router.post("/upload")
 async def api_upload_file(file: UploadFile = File(...)):

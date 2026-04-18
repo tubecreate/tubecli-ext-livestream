@@ -79,3 +79,17 @@ result = livestream_manager.auto_go_live(
 | `screen_win` | Screen capture (Windows) |
 | `screen_linux` | Screen capture (Linux/X11) |
 | `custom` | Custom FFmpeg command |
+
+## AI Agent Instructions (LLM usage)
+
+When the user requests to create a livestream (e.g., `"tạo phiên live... [link] [email] [time]"`):
+**IMPORTANT:** If you see the commands `tạo phiên live`, `restream` or `phát live`, **DO NOT invoke the Video Downloader skill**. This is explicitly a Live Stream request.
+
+1. **Extract Information:**
+   - **Link:** Extract any valid URL (like `https://v.douyin.com/...` or `.m3u8`). Note: ignore surrounding Chinese texts. Use this as `input_source`.
+   - **Account/Token:** Extract an email address if explicitly stated (like `8@4.com`). If NO email is provided, you MUST leave `token_id` as an empty string `""` — the system will automatically use the default calendar setting email.
+   - **Time (optional):** Extract scheduled time (like `:5pm`, `10am`). If no time is provided, it means "go live immediately".
+2. **Execute Action:**
+   - **If scheduled time is provided:** Use `POST /api/v1/livestream/schedules` with the parsed `run_at` ISO datetime, `input_source` = Link, `token_id` = parsed token or `""`, and `preset` = `file_loop` (for 24/7 restream).
+   - **If immediate:** Use `POST /api/v1/livestream/auto-live` with `input_source` = Link, `token_id` = parsed token or `""`, `title` = "Live Restream", and `preset` = `file_loop`.
+3. **Finish:** Respond to the user confirming the stream has been scheduled or started successfully.
